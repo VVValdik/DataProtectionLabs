@@ -2,15 +2,23 @@
 #include <iostream>
 
 const size_t BUFFER_SIZE = 10;
-const int key[10] = { 3, 9, 8, 1, 6, 10, 5, 2, 7, 4 };
+const int key_to_encrypt[10] = { 3, 9, 8, 1, 6, 10, 5, 2, 7, 4 };
+//const int key[10] =          { 4, 8, 1, 10, 7, 5, 9, 3, 2, 6 };
 
-void check_file(FILE *file, const char *filename)
+enum TranspositionCipherMode {
+	ENCRYPT,
+	DECRYPT
+};
+
+FILE* open_file(const char* filename, const char* mode)
 {
+	FILE *file = fopen(filename, mode);
 	if (!file)
 	{
 		printf("Can't open file %s!", filename);
 		exit(1);
 	}
+	return file;
 }
 
 void add_spaces(char **text, const size_t size)
@@ -22,87 +30,70 @@ void add_spaces(char **text, const size_t size)
 	}
 }
 
-char* encrypt_str(const char *text, const size_t size)
+void calculate_key(int* key, TranspositionCipherMode mode)
 {
-	char* encrypted_text = (char*)malloc(BUFFER_SIZE + 1);
+	if (mode == ENCRYPT)
+	{
+		for (int i = 0; i < BUFFER_SIZE; i++)
+		{
+			key[i] = key_to_encrypt[i];
+		}
+	}
+	else if (mode == DECRYPT)
+	{
+		for (int i = 0; i < BUFFER_SIZE; i++)
+		{
+			int move_to = key_to_encrypt[i] - 1;
+			key[key_to_encrypt[move_to] - 1] = key_to_encrypt[i];
+		}
+	}
+}
+
+char* transposition_cipher_str(const char* text, const int key[10])
+{
+	char *text_after_transposition = (char*)malloc(BUFFER_SIZE + 1);
+
 	for (int i = 0; i < BUFFER_SIZE; i++)
 	{
-		encrypted_text[i] = text[key[i] - 1];
+		text_after_transposition[i] = text[key[i] - 1];
 	}
-	encrypted_text[BUFFER_SIZE] = '\0';
+	text_after_transposition[BUFFER_SIZE] = '\0';
 
-	return encrypted_text;
+	return text_after_transposition;
 }
 
-char* decrypt_str(const char *text, const size_t size)
+void transposition_cipher(const char* source_fname, const char* output_fname, TranspositionCipherMode mode)
 {
-	char* decrypted = (char*)malloc(BUFFER_SIZE + 1);
-	for (int i = 0; i < BUFFER_SIZE; i++)
-	{
-		decrypted[key[i] - 1] = text[i];
-	}
-	decrypted[BUFFER_SIZE] = '\0';
+	FILE *fsource = open_file(source_fname, "rb");
+	FILE *foutput = open_file(output_fname, "wb");
 
-	return decrypted;
-}
-
-void encrypt_file(const char* source_fname, const char* output_fname)
-{
-	FILE *fsource = fopen(source_fname, "rb");
-	check_file(fsource, source_fname);
-
-	FILE *foutput = fopen(output_fname, "wb");
-	check_file(foutput, output_fname);
+	int *key = new int[10];
+	calculate_key(key, mode);
 
 	char* buffer = (char*)malloc(BUFFER_SIZE + 1);
-	char* encrypted_text;
-	while (!feof(fsource))
-	{
-		size_t element_count = fread_s(buffer, BUFFER_SIZE,sizeof(char), BUFFER_SIZE, fsource);
-		add_spaces(&buffer, element_count);
-		encrypted_text = encrypt_str(buffer, element_count);
-		fwrite(encrypted_text, sizeof(char), BUFFER_SIZE, foutput);
-		free(encrypted_text);
-	}
-
-	if(buffer) free(buffer);
-	if(fsource) fclose(fsource);
-	if(foutput) fclose(foutput);
-}
-
-void decrypt_file(const char* source_fname, const char* output_fname)
-{
-	FILE *fsource = fopen(source_fname, "rb");
-	check_file(fsource, source_fname);
-	
-	FILE *foutput = fopen(output_fname, "wb");
-	check_file(foutput, output_fname);
-
-	char* buffer = (char*)malloc(BUFFER_SIZE + 1);
-	char* decrypted;
+	char* buffer_after_transposition = NULL;
 	while (!feof(fsource))
 	{
 		size_t element_count = fread_s(buffer, BUFFER_SIZE, sizeof(char), BUFFER_SIZE, fsource);
 		if (element_count == 0) break;
 		add_spaces(&buffer, element_count);
-		decrypted = decrypt_str(buffer, element_count);
-		fwrite(decrypted, sizeof(char), element_count, foutput);
-		free(decrypted);
+		buffer_after_transposition = transposition_cipher_str(buffer, key);
+		fwrite(buffer_after_transposition, sizeof(char), BUFFER_SIZE, foutput);
+		free(buffer_after_transposition);
 	}
 
-	if(buffer) free(buffer);
-	if(fsource) fclose(fsource);
-	if(foutput) fclose(foutput);
+	free(buffer);
+	free(key);
+	fclose(fsource);
+	fclose(foutput);
 }
 
 bool file_equals(const char* file1_name, const char* file2_name)
 {
 	bool files_are_equal = true;
-	FILE *file1 = fopen(file1_name, "rb");
-	check_file(file1, file1_name);
 
-	FILE *file2 = fopen(file2_name, "rb");
-	check_file(file2, file2_name);
+	FILE *file1 = open_file(file1_name, "rb");
+	FILE *file2 = open_file(file2_name, "rb");
 
 	int c1, c2;
 	while (!feof(file1) && !feof(file2))
@@ -128,9 +119,9 @@ int main()
 	const char *encrypted_fname = "encrypted.txt";
 	const char *decrypted_fname = "decrypted.txt";
 
-	encrypt_file(source_fname, encrypted_fname);
+	transposition_cipher(source_fname, encrypted_fname, ENCRYPT);
 
-	decrypt_file(encrypted_fname, decrypted_fname);
+	transposition_cipher(encrypted_fname, decrypted_fname, DECRYPT);
 
 	if (file_equals(source_fname, decrypted_fname))
 	{
